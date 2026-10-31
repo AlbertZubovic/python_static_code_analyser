@@ -1,0 +1,7 @@
+Hello
+This is a normal line.
+Python is a great programming language.
+This line is intentionally made longer than seventy-nine characters to test your code.
+Short line.
+Another deliberately long line that should trigger your line length checker because it exceeds the maximum allowed length.
+Done.
