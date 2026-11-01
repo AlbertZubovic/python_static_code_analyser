@@ -1,10 +1,11 @@
 import logging
+import os
 import sys
 
 from argparse import ArgumentParser
 from typing import Final
 
-ERROR_FORMAT: Final = "Line {line}: {code} {message}"
+ERROR_FORMAT: Final = "{path}: Line {line}: {code} {message}"
 
 logging.basicConfig(level=logging.WARNING, format="%(levelname)s:%(message)s")
 
@@ -12,12 +13,23 @@ logging.basicConfig(level=logging.WARNING, format="%(levelname)s:%(message)s")
 def main() -> None:
     """Parse command-line arguments and run the code analyser."""
 
-    parser = ArgumentParser(description="Check for code violations in the file provided.")
-    parser.add_argument("file_path")
+    parser = ArgumentParser(description="Check for code violations in a file or directory provided.")
+    parser.add_argument("file_path", type=str)
     args = parser.parse_args()
-    filepath = args.file_path
+    filepath: str = args.file_path
 
-    check_file(filepath)
+    if filepath.endswith(".py"):
+        check_file(filepath)
+    elif os.path.isdir(filepath):
+        file_paths: list[str] = []
+
+        for root, _, files in os.walk(filepath):
+                for file in files:
+                    if file.endswith(".py"):
+                        file_paths.append(os.path.join(root, file))
+
+        for path in sorted(file_paths):
+            check_file(path)
 
 
 def check_file(path: str) -> None:
@@ -34,22 +46,22 @@ def check_file(path: str) -> None:
             for line_no, line in enumerate(f, start=1):
 
                 if check_line_length(line):
-                    report_error(line_no, "S001", "Too long")
+                    report_error(path, line_no, "S001", "Too long")
 
                 if check_indentation(line):
-                    report_error(line_no, "S002", "Indentation is not a multiple of four")
+                    report_error(path, line_no, "S002", "Indentation is not a multiple of four")
 
                 if check_semicolon(line):
-                    report_error(line_no, "S003", "Unnecessary semicolon after a statement")
+                    report_error(path, line_no, "S003", "Unnecessary semicolon after a statement")
 
                 if check_inline_comment_spacing(line):
-                    report_error(line_no, "S004", "Less than two spaces before inline comments")
+                    report_error(path, line_no, "S004", "Less than two spaces before inline comments")
 
                 if check_todo_comment(line):
-                    report_error(line_no, "S005", "TODO found")
+                    report_error(path, line_no, "S005", "TODO found")
 
                 if check_blank_line(line, blank_count):
-                    report_error(line_no, "S006", "More than two blank lines preceding a code line")
+                    report_error(path, line_no, "S006", "More than two blank lines preceding a code line")
 
                 if not line.strip():
                     blank_count += 1
@@ -65,9 +77,9 @@ def check_file(path: str) -> None:
         sys.exit(1)
 
 
-def report_error(line_no: int, code: str, message: str) -> None:
+def report_error(path: str, line_no: int, code: str, message: str) -> None:
     """Print a formatted code style violation."""
-    print(ERROR_FORMAT.format(line=line_no, code=code, message=message))
+    print(ERROR_FORMAT.format(path=path, line=line_no, code=code, message=message))
 
 
 # Static code checkers
