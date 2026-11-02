@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 import sys
 
 from argparse import ArgumentParser
@@ -63,6 +64,22 @@ def check_file(path: str) -> None:
                 if check_blank_line(line, blank_count):
                     report_error(path, line_no, "S006", "More than two blank lines preceding a code line")
 
+                construction_keyword = check_construction_spacing(line)
+
+                if construction_keyword:
+                    report_error(path, line_no, "S007",f"Too many spaces after '{construction_keyword}'")
+
+                invalid_class_name = check_class_case(line)
+
+                if invalid_class_name:
+                    report_error(path, line_no, "S008", f"Class name '{invalid_class_name}' should be written in CamelCase")
+
+                invalid_function_name = check_function_case(line)
+
+                if invalid_function_name:
+                    report_error(path, line_no, "S009", f"Function name '{invalid_function_name}' should be written in snake_case")
+
+
                 if not line.strip():
                     blank_count += 1
                 else:
@@ -118,6 +135,42 @@ def check_todo_comment(line: str) -> bool:
 def check_blank_line(line: str, blank_count: int) -> bool:
     """Return True if a non-empty line follows more than two blank lines."""
     return blank_count > 2 and bool(line.strip())
+
+def check_construction_spacing(line: str) -> str|None:
+    """Return the keyword with excessive spacing, or None if valid."""
+    line = line.lstrip()
+
+    if line.startswith("def "):
+        line = line[3:]
+        if (len(line) - len(line.lstrip())) > 1:
+            return "def"
+    elif line.startswith("class "):
+        line = line[5:]
+        if (len(line) - len(line.lstrip())) > 1:
+            return "class"
+    return None
+
+def check_class_case(line: str) -> str|None:
+    """Return an invalid class name, or None if its naming is valid."""
+
+    definition = re.match(r"class\s+(\w+)", line.lstrip())
+
+    if definition:
+        class_name = definition.group(1)
+        if not (class_name[0].isupper() and "_" not in class_name):
+            return class_name
+    return None
+
+def check_function_case(line: str) -> str|None:
+   """Return an invalid function name, or None if its naming is valid."""
+
+   definition = re.match(r"(?:async\s+)?def\s+(\w+)", line.lstrip())
+
+   if definition:
+       function_name = definition.group(1)
+       if any(char.isupper() for char in function_name):
+           return function_name
+   return None
 
 
 if __name__ == "__main__":
