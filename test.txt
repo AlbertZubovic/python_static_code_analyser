@@ -1,0 +1,39 @@
+GlobalVariable = 10
+
+class Example:
+    ClassVariable = 20
+
+    def method(self):
+        MethodVariable = 30
+        valid_variable = 40
+
+def outer():
+    OuterVariable = 10
+    anotherVariable = 20
+    valid_name = 30
+
+    if True:
+        NestedVariable = 40
+
+    for item in range(3):
+        LoopBodyVariable = item
+
+    def inner():
+        InnerVariable = 50
+
+    class NestedClass:
+        ClassAttribute = 60
+
+        def nested_method(self):
+            NestedMethodVariable = 70
+
+def assignment_types():
+    FirstVariable = SecondVariable = 10
+    TupleVariable, AnotherTupleVariable = 1, 2
+    AugmentedVariable = 5
+    AugmentedVariable += 1
+    AnnotatedVariable: int = 10
+    valid_variable = 20
+
+async def async_example():
+    AsyncVariable = 100
