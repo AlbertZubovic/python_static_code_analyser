@@ -5,12 +5,15 @@ and mutable default arguments.
 """
 
 import ast
+import io
 import logging
 import os
 import sys
+import tokenize
 
 from argparse import ArgumentParser
-from typing import Final, Iterator
+from collections.abc import Sequence
+from typing import Final, Iterator, Iterable
 
 ERROR_FORMAT: Final = "{path}: Line {line}: {code} {message}"
 
@@ -97,21 +100,19 @@ def main() -> None:
 def check_file(path: str) -> None:
     """Analyse a file for S001-S012 style violations.
 
-    Use line-based checks for formatting and AST-based checks
-    for names, assignments and mutable defaults.
+    Use line-based checks for formatting, token-based checks for
+    comments and semicolons, and AST-based checks for naming and
+    mutable default arguments.
 
     Collect and sort violations before reporting them.
     """
 
     try:
+
+        violations: list[tuple[str, int, str, str]] = []
+
         with open(path, "r", encoding="utf-8") as f:
             source = f.read()
-            tree = ast.parse(source)
-
-            visitor = FunctionVisitor()
-            visitor.visit(tree)
-
-            violations: list[tuple[str, int, str, str]] = []
 
             logging.info("Successfully opened file: %s", path)
 
@@ -124,15 +125,6 @@ def check_file(path: str) -> None:
 
                 if check_indentation(line):
                     violations.append((path , line_no, "S002", "Indentation is not a multiple of four"))
-
-                if check_semicolon(line):
-                    violations.append((path , line_no, "S003", "Unnecessary semicolon after a statement"))
-
-                if check_inline_comment_spacing(line):
-                    violations.append((path , line_no, "S004", "Less than two spaces before inline comments"))
-
-                if check_todo_comment(line):
-                    violations.append((path , line_no, "S005", "TODO found"))
 
                 if check_blank_line(line, blank_count):
                     violations.append((path , line_no, "S006", "More than two blank lines preceding a code line"))
@@ -147,6 +139,22 @@ def check_file(path: str) -> None:
                     blank_count += 1
                 else:
                     blank_count = 0
+
+
+        tree = ast.parse(source)
+        visitor = FunctionVisitor()
+        visitor.visit(tree)
+        tokens = list(tokenize.generate_tokens(io.StringIO(source).readline))
+
+        # Check comments and end of statement rules using tokenizer.
+        for line_no in check_semicolon(tokens):
+            violations.append((path, line_no, "S003", "Unnecessary semicolon after a statement"))
+
+        for line_no in check_inline_comment_spacing(tokens):
+            violations.append((path, line_no, "S004", "Less than two spaces before inline comments"))
+
+        for line_no in check_todo_comment(tokens):
+            violations.append((path, line_no, "S005", "TODO found"))
 
         # Check naming and default-argument rules using the AST
         invalid_class_names = check_class_case(ast.walk(tree))
@@ -165,8 +173,7 @@ def check_file(path: str) -> None:
         for variable_name, line_no in invalid_variables:
             violations.append((path, line_no, "S011", f"Variable '{variable_name}' should be written in snake_case"))
 
-        mutable_defaults = check_mutable_defaults(ast.walk(tree))
-        for line_no in mutable_defaults:
+        for line_no in check_mutable_defaults(ast.walk(tree)):
             violations.append((path, line_no, "S012", f"The default argument value is mutable"))
 
 
@@ -198,28 +205,39 @@ def check_indentation(line: str) -> bool:
     """Return True if indentation is not a multiple of four spaces."""
     return (len(line) - len(line.lstrip(" "))) % 4 != 0
 
-def check_semicolon(line: str) -> bool:
-    """Return True if the line ends with an unnecessary semicolon."""
-    code = line.split("#", 1)[0].strip()
+def check_semicolon(tokens: Sequence[tokenize.TokenInfo]) -> list[int]:
+    """Return line numbers of statements that end with an unnecessary semicolon."""
 
-    return code.endswith(";")
+    semicolon_lines = []
+    for i, token in enumerate(tokens):
+        if token.type == tokenize.OP and token.string == ";":
+            next_token = tokens[i + 1]
 
-def check_inline_comment_spacing(line: str) -> bool:
-    """Return True if an inline comment has fewer than two preceding spaces."""
-    if "#" not in line:
-        return False
+            if next_token.type in (tokenize.NEWLINE, tokenize.COMMENT):
+                semicolon_lines.append(token.start[0])
+    return semicolon_lines
 
-    if line.strip().startswith("#"):
-        return False
+def check_inline_comment_spacing(tokens: Iterable[tokenize.TokenInfo]) -> list[int]:
+    """Return line numbers of comments with fewer than two preceding spaces."""
 
-    return not line.split("#", 1)[0].endswith("  ")
+    invalid_comment_lines = []
+    for token in tokens:
+        if token.type == tokenize.COMMENT:
+            comment_column = token.start[1]
+            before_comment = token.line[:comment_column]
+            if before_comment.strip() and not before_comment.endswith("  "):
+                invalid_comment_lines.append(token.start[0])
+    return invalid_comment_lines
 
-def check_todo_comment(line: str) -> bool:
-    """Return True if a comment contains TODO, ignoring case."""
-    if "#" not in line:
-        return False
+def check_todo_comment(tokens: Iterable[tokenize.TokenInfo]) -> list[int]:
+    """Return line numbers of comments containing TODO."""
 
-    return "todo" in line.split("#", 1)[1].lower()
+    todo_lines = []
+    for token in tokens:
+        if token.type == tokenize.COMMENT:
+            if "todo" in token.string.lower():
+                todo_lines.append(token.start[0])
+    return todo_lines
 
 def check_blank_line(line: str, blank_count: int) -> bool:
     """Return True if a non-empty line follows more than two blank lines."""
